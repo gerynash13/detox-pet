@@ -21,9 +21,9 @@ class TrackerService : Service() {
     // ---- Test settings. Change these later. ----
     private val pollMs = 10_000L          // check every 10 s (use 60_000L later)
     private val thresholdMs = 60_000L     // alert after 1 min (use 15 * 60_000L later)
-    private val blacklist = setOf(
-        "com.google.android.youtube",
-        "com.instagram.android"
+    private val blacklist = mapOf(
+        "com.google.android.youtube" to "YouTube",
+        "com.instagram.android" to "Instagram",
         // Add the package names you saw in your own list, e.g. TikTok, Reddit.
     )
 
@@ -91,13 +91,14 @@ class TrackerService : Service() {
         lastQuery = now
 
         val pkg = currentPkg
-        if (pkg != null && pkg in blacklist) {
+        val appName = if (pkg != null) blacklist[pkg] else null
+        if (appName != null) {
             if (blacklistedSince == null) blacklistedSince = now
             val elapsed = now - blacklistedSince!!
-            updateStatus("On $pkg for ${elapsed / 1000}s")
+            updateStatus("On $appName for ${elapsed / 1000}s")
             if (elapsed >= thresholdMs && !alerted) {
                 alerted = true
-                sendAlert(elapsed / 60_000)
+                sendAlert(appName, elapsed / 60_000)
             }
         } else {
             blacklistedSince = null
@@ -129,17 +130,19 @@ class TrackerService : Service() {
         getSystemService(NotificationManager::class.java).notify(1, statusNotification(text))
     }
 
-    private fun sendAlert(minutes: Long) {
+    private fun sendAlert(appName: String, minutes: Long) {
+        val intent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra("alert_app", appName)
+            .putExtra("alert_minutes", minutes)
         val open = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            this, 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val n = NotificationCompat.Builder(this, "alerts")
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("Hey. Scroller.")
-            .setContentText("That's $minutes+ min of distraction. Put the phone down!")
+            .setContentText("Still on $appName? Tap to face your pet.")
             .setContentIntent(open)
             .setAutoCancel(true)
             .build()

@@ -16,9 +16,30 @@ import java.util.Locale
 import android.Manifest
 import android.os.Build
 import androidx.core.content.ContextCompat
+import android.os.Bundle
 
 class MainActivity : FlutterActivity() {
     private val channelName = "detox_pet/usage"
+
+    private var pendingAlert: Map<String, Any>? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        captureAlert(intent)
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureAlert(intent)
+    }
+
+    private fun captureAlert(intent: Intent?) {
+        val app = intent?.getStringExtra("alert_app") ?: return
+        val minutes = intent.getLongExtra("alert_minutes", 0L)
+        pendingAlert = mapOf("app" to app, "minutes" to minutes)
+        intent.removeExtra("alert_app") // So it can't fire twice
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -44,6 +65,10 @@ class MainActivity : FlutterActivity() {
                     "stopTracker" -> {
                         stopService(Intent(this, TrackerService::class.java))
                         result.success(null)
+                    }
+                    "getPendingAlert" -> {
+                        result.success(pendingAlert)
+                        pendingAlert = null
                     }
                     else -> result.notImplemented()
                 }
