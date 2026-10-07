@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'roast_api.dart';
 import 'pet_screen.dart';
 import 'tasks_screen.dart';
+import 'settings_screen.dart';
+import 'memory.dart';
 
 final navKey = GlobalKey<NavigatorState>();
 
@@ -72,7 +74,12 @@ class _SpikePageState extends State<SpikePage> with WidgetsBindingObserver {
               ElevatedButton(
                 onPressed: () => navKey.currentState?.push(
                   MaterialPageRoute(builder: (_) => const TasksScreen())), 
-                  child: const Text('Tasks & XP'),)
+                  child: const Text('Tasks & XP'),),
+              ElevatedButton(
+                onPressed: () => navKey.currentState?.push(
+                  MaterialPageRoute(builder: (_) => const SettingsScreen())), 
+                  child: const Text('Settings'),),
+              ElevatedButton(onPressed: _showMemory, child: const Text('Pet memory'),),
             ]),
             TextField(
               controller: _taskCtl,
@@ -122,5 +129,25 @@ class _SpikePageState extends State<SpikePage> with WidgetsBindingObserver {
         minutes: (alert['minutes'] as num).toInt(),
       ),
     ));
+  }
+
+  Future<void> _showMemory() async {
+    final bullets = await PetMemory.buildBullets();
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('What the pet remembers'),
+        content: Text(bullets.isEmpty
+            ? 'Nothing yet. Get caught scrolling first.'
+            : bullets.map((b) => '- $b').join('\n')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 }

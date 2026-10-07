@@ -70,6 +70,20 @@ class MainActivity : FlutterActivity() {
                         result.success(pendingAlert)
                         pendingAlert = null
                     }
+                    "getInstalledApps" -> {
+                        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                        val apps = packageManager.queryIntentActivities(launcher, 0)
+                            .map {
+                                mapOf(
+                                    "pkg" to it.activityInfo.packageName,
+                                    "name" to it.loadLabel(packageManager).toString()
+                                )
+                            }
+                            .filter { it["pkg"] != packageName }
+                            .distinctBy { it["pkg"] }
+                            .sortedBy { it["name"]!!.lowercase() }
+                        result.success(apps)
+                    }
                     else -> result.notImplemented()
                 }
             }

@@ -9,6 +9,7 @@
     required int minutes,
     String? task,
     String? title,
+    List<String>? history,
   }) async {
     final res = await http.post(
       Uri.parse('$supabaseUrl/functions/v1/intervene'),
@@ -16,8 +17,13 @@
         'Authorization': 'Bearer $supabaseAnonKey',
         'Content-Type': 'application/json',
       },
-      body: jsonEncode(
-          {'app': app, 'minutes': minutes, 'task': task, 'title': title}),
+      body: jsonEncode({
+        'app': app,
+        'minutes': minutes,
+        'task': task,
+        'title': title,
+        'history': history ?? [],
+      }),
     );
     if (res.statusCode != 200) {
       throw Exception('Roast failed: ${res.statusCode} ${res.body}');

@@ -6,13 +6,16 @@ Deno.serve(async (req) => {
     });
 
   try {
-    const { app, minutes, task, title } = await req.json();
+    const { app, minutes, task, title, history } = await req.json();
 
     // Keep inputs short and plain so nobody can stuff huge text into your prompt.
     const appName = String(app ?? "a distracting app").slice(0, 60);
     const mins = Math.min(Number(minutes) || 0, 600);
     const nextTask = String(task ?? "").slice(0, 200) || "something important";
     const userTitle = String(title ?? "").slice(0, 40);
+    const habits = (Array.isArray(history) ? history : [])
+      .slice(0, 5)
+      .map((h: unknown) => String(h).slice(0, 120));
 
     const system =
       "You are a sassy pet guardian helping a human stop doom scrolling. " +
@@ -23,7 +26,10 @@ Deno.serve(async (req) => {
     const user =
       `The user has been on ${appName} for ${mins} minutes. ` +
       `Their next task is: ${nextTask}. ` +
-      (userTitle ? `Address them by their current title: "${userTitle}".` : "");
+      (userTitle ? `Address them by their current title: "${userTitle}". ` : "") +
+      (habits.length
+        ? `Known habits (reference at most one, only if it sharpens the roast): ${habits.join(" ")}`
+        : "");
 
     console.log("PROMPT:", user);
 

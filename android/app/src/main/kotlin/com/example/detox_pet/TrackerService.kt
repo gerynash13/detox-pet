@@ -16,16 +16,40 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import org.json.JSONArray
+import org.json.JSONObject
 
 class TrackerService : Service() {
-    // ---- Test settings. Change these later. ----
-    private val pollMs = 10_000L          // check every 10 s (use 60_000L later)
-    private val thresholdMs = 60_000L     // alert after 1 min (use 15 * 60_000L later)
-    private val blacklist = mapOf(
-        "com.google.android.youtube" to "YouTube",
-        "com.instagram.android" to "Instagram",
-        // Add the package names you saw in your own list, e.g. TikTok, Reddit.
-    )
+    private class Config(
+    val thresholdMs: Long,
+    val pollMs: Long,
+    val apps: Map<String, String>
+)
+
+    private fun loadConfig(): Config {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val raw = prefs.getString("flutter.tracker_config", null)
+        var minutes = 15
+        val apps = mutableMapOf<String, String>()
+        if (raw != null) {
+            try {
+                val obj = JSONObject(raw)
+                minutes = obj.optInt("thresholdMinutes", 15)
+                val arr = obj.optJSONArray("apps")
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        val a = arr.getJSONObject(i)
+                        apps[a.getString("pkg")] = a.getString("name")
+                    }
+                }
+            } catch (_: Exception) {
+                // bad or missing settings: fall back to defaults
+            }
+        }
+        // Short limits = test mode, so poll faster. Otherwise once a minute.
+        val poll = if (minutes <= 2) 10_000L else 60_000L
+        return Config(minutes * 60_000L, poll, apps)
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var running = false
@@ -49,8 +73,9 @@ class TrackerService : Service() {
 
     private val tick = object : Runnable {
         override fun run() {
-            if (screenOn) check()
-            handler.postDelayed(this, pollMs)
+            val cfg = loadConfig()
+            if (screenOn) check(cfg)
+            handler.postDelayed(this, cfg.pollMs)
         }
     }
 
@@ -78,7 +103,7 @@ class TrackerService : Service() {
         return START_STICKY
     }
 
-    private fun check() {
+    private fun check(cfg: Config) {
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
         val from = if (lastQuery == 0L) now - 60 * 60 * 1000 else lastQuery
@@ -91,19 +116,29 @@ class TrackerService : Service() {
         lastQuery = now
 
         val pkg = currentPkg
-        val appName = if (pkg != null) blacklist[pkg] else null
+        val appName = if (pkg != null) cfg.apps[pkg] else null
         if (appName != null) {
             if (blacklistedSince == null) blacklistedSince = now
             val elapsed = now - blacklistedSince!!
             updateStatus("On $appName for ${elapsed / 1000}s")
-            if (elapsed >= thresholdMs && !alerted) {
+            if (elapsed >= cfg.thresholdMs && !alerted) {
                 alerted = true
                 sendAlert(appName, elapsed / 60_000)
             }
         } else {
             blacklistedSince = null
             alerted = false
-            updateStatus("Watching... now: $pkg")
+            updateStatus("Watching... now: ${labelFor(pkg)}")
+        }
+    }
+
+    private fun labelFor(pkg: String?): String {
+        if (pkg == null) return "unknown"
+        return try {
+            val info = packageManager.getApplicationInfo(pkg, 0)
+            packageManager.getApplicationLabel(info).toString()
+        } catch (_: Exception) {
+            pkg // apps without a launcher icon (system screens etc.) keep the package name
         }
     }
 
@@ -131,6 +166,7 @@ class TrackerService : Service() {
     }
 
     private fun sendAlert(appName: String, minutes: Long) {
+        logIntervention(appName, minutes)
         val intent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra("alert_app", appName)
@@ -147,6 +183,26 @@ class TrackerService : Service() {
             .setAutoCancel(true)
             .build()
         getSystemService(NotificationManager::class.java).notify(2, n)
+    }
+
+    private fun logIntervention(appName: String, minutes: Long) {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val old = try {
+            JSONArray(prefs.getString("flutter.interventions", "[]") ?: "[]")
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        old.put(
+            JSONObject()
+                .put("t", System.currentTimeMillis())
+                .put("app", appName)
+                .put("min", minutes)
+        )
+        // Keep only the newest 200 entries so the file never grows forever.
+        val trimmed = JSONArray()
+        val start = maxOf(0, old.length() - 200)
+        for (i in start until old.length()) trimmed.put(old.get(i))
+        prefs.edit().putString("flutter.interventions", trimmed.toString()).apply()
     }
 
     override fun onDestroy() {

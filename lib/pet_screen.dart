@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'roast_api.dart';
 import 'storage.dart';
+import 'memory.dart';
 
 class PetScreen extends StatefulWidget {
   final String app;
@@ -28,11 +29,13 @@ class _PetScreenState extends State<PetScreen> {
     try {
       final task = await Store.nextTask();
       final title = Store.titleFor(await Store.loadXp());
+      final history = await PetMemory.buildBullets();
       _full = await fetchRoast(
         app: widget.app,
         minutes: widget.minutes,
         task: task,
         title: title,
+        history: history,
       );
     } catch (_) {
       _full = "My brain is offline, but my eyes work fine. "
